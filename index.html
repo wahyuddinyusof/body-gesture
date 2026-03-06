@@ -40,7 +40,7 @@
     width: 100%; height: 100%;
     object-fit: cover;
     transform: scaleX(-1);
-    opacity: 0.15;
+    opacity: 0.85;
     z-index: 1;
   }
 
@@ -573,7 +573,7 @@ function createEmber(x, y) {
 
 function renderEffects() {
   // Semi-transparent clear for trails
-  eCtx.fillStyle = 'rgba(4, 8, 16, 0.18)';
+  eCtx.fillStyle = 'rgba(0, 0, 0, 0.08)';
   eCtx.fillRect(0, 0, effectCanvas.width, effectCanvas.height);
 
   // --- Splash particles ---
