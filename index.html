@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GESTURE FX — Body Motion Effects</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" defer></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&display=swap');
+
+  :root {
+    --neon-cyan: #00fff7;
+    --neon-magenta: #ff00e5;
+    --neon-orange: #ff6a00;
+    --dark-bg: #040810;
+    --panel-bg: rgba(0, 20, 40, 0.85);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--dark-bg);
+    font-family: 'Rajdhani', sans-serif;
+    color: #fff;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  #app {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  /* === VIDEO + CANVAS STACK === */
+  #video {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+    opacity: 0.15;
+    z-index: 1;
+  }
+
+  #effectCanvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  #poseCanvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 3;
+    pointer-events: none;
+    transform: scaleX(-1);
+  }
+
+  /* === LOADING SCREEN === */
+  #loadScreen {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    background: var(--dark-bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+  }
+
+  .load-title {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(2rem, 6vw, 4rem);
+    font-weight: 900;
+    letter-spacing: 0.15em;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-magenta), var(--neon-orange));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: none;
+    animation: titlePulse 2s ease-in-out infinite;
+  }
+
+  @keyframes titlePulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.4); }
+  }
+
+  .load-sub {
+    font-size: 1.1rem;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+  }
+
+  .load-bar-wrap {
+    width: 300px;
+    height: 3px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .load-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-magenta));
+    border-radius: 2px;
+    animation: loadAnim 2s ease-in-out forwards;
+    width: 0%;
+  }
+
+  @keyframes loadAnim { to { width: 100%; } }
+
+  #loadStatus {
+    font-size: 0.85rem;
+    color: var(--neon-cyan);
+    letter-spacing: 0.1em;
+    opacity: 0.7;
+    min-height: 1.2em;
+  }
+
+  /* === TOP UI BAR === */
+  #topBar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 10;
+    padding: 16px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(to bottom, rgba(4,8,16,0.9), transparent);
+  }
+
+  .app-logo {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.2rem;
+    font-weight: 900;
+    letter-spacing: 0.2em;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 20px var(--neon-cyan);
+  }
+
+  .status-dot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.6);
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #666;
+    transition: all 0.3s;
+  }
+  .dot.active {
+    background: #00ff88;
+    box-shadow: 0 0 8px #00ff88;
+    animation: dotPulse 1s ease-in-out infinite;
+  }
+  @keyframes dotPulse {
+    0%,100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
+
+  /* === EFFECT SWITCHER === */
+  #effectPanel {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    gap: 12px;
+    background: var(--panel-bg);
+    border: 1px solid rgba(0, 255, 247, 0.15);
+    border-radius: 50px;
+    padding: 10px 16px;
+    backdrop-filter: blur(12px);
+  }
+
+  .fx-btn {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 40px;
+    padding: 8px 18px;
+    color: rgba(255,255,255,0.5);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    text-transform: uppercase;
+  }
+
+  .fx-btn:hover {
+    color: #fff;
+    border-color: rgba(255,255,255,0.3);
+  }
+
+  .fx-btn.active {
+    color: #000;
+    border-color: transparent;
+    text-shadow: none;
+  }
+
+  .fx-btn[data-fx="splash"].active { background: var(--neon-cyan); box-shadow: 0 0 20px var(--neon-cyan); }
+  .fx-btn[data-fx="rainbow"].active { background: linear-gradient(90deg,#ff0080,#ffff00,#00ff88,#00cfff); box-shadow: 0 0 20px #ff0080; }
+  .fx-btn[data-fx="fire"].active { background: linear-gradient(90deg, #ff6a00, #ee0979); box-shadow: 0 0 20px #ff6a00; }
+  .fx-btn[data-fx="all"].active { background: linear-gradient(90deg, var(--neon-magenta), var(--neon-cyan)); box-shadow: 0 0 20px var(--neon-magenta); }
+
+  /* === SIDE INFO === */
+  #infoPanel {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    color: rgba(255,255,255,0.35);
+  }
+
+  .info-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+
+  .info-label { color: rgba(255,255,255,0.2); text-transform: uppercase; }
+  .info-val { color: var(--neon-cyan); font-family: 'Orbitron', monospace; font-size: 0.75rem; }
+
+  /* === GESTURE HINT === */
+  #gestureHint {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    text-align: center;
+    pointer-events: none;
+    opacity: 1;
+    transition: opacity 1s ease;
+  }
+
+  .hint-icon {
+    font-size: 4rem;
+    margin-bottom: 12px;
+    animation: floatHint 2s ease-in-out infinite;
+  }
+
+  @keyframes floatHint {
+    0%,100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+
+  .hint-text {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.9rem;
+    letter-spacing: 0.2em;
+    color: rgba(255,255,255,0.4);
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Loading -->
+  <div id="loadScreen">
+    <div class="load-title">GESTURE FX</div>
+    <div class="load-sub">Body Motion Visual Engine</div>
+    <div class="load-bar-wrap"><div class="load-bar"></div></div>
+    <div id="loadStatus">Memuatkan model AI...</div>
+  </div>
+
+  <!-- Video feed -->
+  <video id="video" autoplay playsinline muted></video>
+
+  <!-- Effect canvas (particles, fire, etc.) -->
+  <canvas id="effectCanvas"></canvas>
+
+  <!-- Pose skeleton canvas -->
+  <canvas id="poseCanvas"></canvas>
+
+  <!-- Top bar -->
+  <div id="topBar">
+    <div class="app-logo">GESTURE FX</div>
+    <div class="status-dot">
+      <div class="dot" id="camDot"></div>
+      <span id="camStatus">Camera</span>
+      &nbsp;&nbsp;
+      <div class="dot" id="poseDot"></div>
+      <span id="poseStatus">Pose</span>
+    </div>
+  </div>
+
+  <!-- Gesture hint when no person detected -->
+  <div id="gestureHint">
+    <div class="hint-icon">🕺</div>
+    <div class="hint-text">Gerak badan di depan kamera</div>
+  </div>
+
+  <!-- Info panel -->
+  <div id="infoPanel">
+    <div class="info-row">
+      <div class="info-label">FPS</div>
+      <div class="info-val" id="fpsVal">--</div>
+    </div>
+    <div class="info-row">
+      <div class="info-label">Keypoints</div>
+      <div class="info-val" id="kpVal">--</div>
+    </div>
+    <div class="info-row">
+      <div class="info-label">Confidence</div>
+      <div class="info-val" id="confVal">--</div>
+    </div>
+  </div>
+
+  <!-- Effect switcher -->
+  <div id="effectPanel">
+    <button class="fx-btn active" data-fx="splash">💧 Splash</button>
+    <button class="fx-btn" data-fx="rainbow">🌈 Rainbow</button>
+    <button class="fx-btn" data-fx="fire">🔥 Fire</button>
+    <button class="fx-btn" data-fx="all">✨ All</button>
+  </div>
+</div>
+
+<!-- TensorFlow.js + MoveNet -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.10.0/tf.min.js"></script>
+<script>
+// ============================================================
+// GESTURE FX — Body Pose + Visual Effects Engine
+// ============================================================
+
+const video = document.getElementById('video');
+const effectCanvas = document.getElementById('effectCanvas');
+const poseCanvas = document.getElementById('poseCanvas');
+const eCtx = effectCanvas.getContext('2d');
+const pCtx = poseCanvas.getContext('2d');
+
+let currentFX = 'splash';
+let detector = null;
+let particles = [];
+let fireParticles = [];
+let rainbowTrails = [];
+let lastPose = null;
+let frameCount = 0;
+let lastFPSTime = performance.now();
+let fps = 0;
+let poseDetected = false;
+
+// Pose keypoint indices (MoveNet)
+const KP = {
+  nose: 0, leftEye: 1, rightEye: 2,
+  leftEar: 3, rightEar: 4,
+  leftShoulder: 5, rightShoulder: 6,
+  leftElbow: 7, rightElbow: 8,
+  leftWrist: 9, rightWrist: 10,
+  leftHip: 11, rightHip: 12,
+  leftKnee: 13, rightKnee: 14,
+  leftAnkle: 15, rightAnkle: 16
+};
+
+// Skeleton connections
+const SKELETON = [
+  [5,6],[5,7],[7,9],[6,8],[8,10],
+  [5,11],[6,12],[11,12],
+  [11,13],[13,15],[12,14],[14,16],
+  [0,1],[0,2],[1,3],[2,4],[0,5],[0,6]
+];
+
+// ---- RESIZE ----
+function resize() {
+  effectCanvas.width = window.innerWidth;
+  effectCanvas.height = window.innerHeight;
+  poseCanvas.width = window.innerWidth;
+  poseCanvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ---- CAMERA ----
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480, facingMode: 'user' }
+    });
+    video.srcObject = stream;
+    await video.play();
+    document.getElementById('camDot').classList.add('active');
+    document.getElementById('camStatus').textContent = 'Camera ON';
+    return true;
+  } catch (e) {
+    document.getElementById('loadStatus').textContent = '⚠️ Camera tidak dapat diakses';
+    return false;
+  }
+}
+
+// ---- LOAD MOVENET via CDN script ----
+async function loadPoseDetector() {
+  document.getElementById('loadStatus').textContent = 'Memuatkan TensorFlow MoveNet...';
+
+  return new Promise((resolve) => {
+    // Load pose-detection library
+    const script1 = document.createElement('script');
+    script1.src = 'https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.10.0/tf.min.js';
+    script1.onload = async () => {
+      const script2 = document.createElement('script');
+      script2.src = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.0/dist/pose-detection.min.js';
+      script2.onload = async () => {
+        try {
+          document.getElementById('loadStatus').textContent = 'Initialising MoveNet model...';
+          detector = await poseDetection.createDetector(
+            poseDetection.SupportedModels.MoveNet,
+            { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+          );
+          document.getElementById('poseDot').classList.add('active');
+          document.getElementById('poseStatus').textContent = 'Pose ON';
+          resolve(true);
+        } catch(e) {
+          console.error(e);
+          document.getElementById('loadStatus').textContent = '⚠️ Gagal muatkan model: ' + e.message;
+          resolve(false);
+        }
+      };
+      script2.onerror = () => { resolve(false); };
+      document.head.appendChild(script2);
+    };
+    document.head.appendChild(script1);
+  });
+}
+
+// ---- INIT ----
+async function init() {
+  await startCamera();
+  await new Promise(r => setTimeout(r, 500));
+
+  document.getElementById('loadStatus').textContent = 'Memuatkan pose detection model...';
+
+  // Try loading pose-detection
+  const script = document.createElement('script');
+  script.src = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js';
+  document.head.appendChild(script);
+
+  script.onload = async () => {
+    try {
+      await tf.ready();
+      document.getElementById('loadStatus').textContent = 'Mencipta detektor pose...';
+      detector = await poseDetection.createDetector(
+        poseDetection.SupportedModels.MoveNet,
+        { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+      );
+      document.getElementById('poseDot').classList.add('active');
+      document.getElementById('poseStatus').textContent = 'Pose ON';
+      document.getElementById('loadStatus').textContent = '✅ Sedia! Gerak badan anda!';
+      await new Promise(r => setTimeout(r, 800));
+      document.getElementById('loadScreen').style.opacity = '0';
+      document.getElementById('loadScreen').style.transition = 'opacity 0.8s';
+      setTimeout(() => document.getElementById('loadScreen').style.display = 'none', 800);
+      requestAnimationFrame(loop);
+    } catch(e) {
+      document.getElementById('loadStatus').textContent = '⚠️ ' + e.message;
+    }
+  };
+
+  script.onerror = () => {
+    document.getElementById('loadStatus').textContent = '⚠️ Gagal muatkan model. Cuba reload.';
+  };
+}
+
+// ---- EFFECT BUTTONS ----
+document.querySelectorAll('.fx-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.fx-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFX = btn.dataset.fx;
+    // Clear particles on switch
+    particles = []; fireParticles = []; rainbowTrails = [];
+  });
+});
+
+// ============================================================
+// PARTICLE SYSTEMS
+// ============================================================
+
+// --- SPLASH PARTICLE ---
+function createSplash(x, y, count = 12) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 / count) * i + Math.random() * 0.5;
+    const speed = 2 + Math.random() * 6;
+    particles.push({
+      type: 'splash',
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1.0,
+      decay: 0.02 + Math.random() * 0.03,
+      size: 3 + Math.random() * 6,
+      color: `hsl(${190 + Math.random()*40}, 100%, ${60 + Math.random()*30}%)`
+    });
+  }
+}
+
+// --- RIPPLE ---
+function createRipple(x, y) {
+  particles.push({
+    type: 'ripple',
+    x, y,
+    radius: 5,
+    maxRadius: 80 + Math.random() * 60,
+    life: 1.0,
+    decay: 0.025
+  });
+}
+
+// --- RAINBOW TRAIL ---
+function addRainbowTrail(x, y) {
+  rainbowTrails.push({
+    x, y,
+    hue: (frameCount * 4) % 360,
+    size: 8 + Math.random() * 10,
+    life: 1.0,
+    decay: 0.04
+  });
+}
+
+// --- FIRE PARTICLE ---
+function createFire(x, y, count = 8) {
+  for (let i = 0; i < count; i++) {
+    fireParticles.push({
+      x: x + (Math.random() - 0.5) * 20,
+      y,
+      vx: (Math.random() - 0.5) * 2,
+      vy: -(2 + Math.random() * 5),
+      life: 1.0,
+      decay: 0.025 + Math.random() * 0.02,
+      size: 8 + Math.random() * 16,
+      hue: Math.random() > 0.5 ? 15 : 35  // red-orange
+    });
+  }
+}
+
+// --- EMBER ---
+function createEmber(x, y) {
+  for (let i = 0; i < 3; i++) {
+    fireParticles.push({
+      x,y,
+      vx: (Math.random()-0.5)*4,
+      vy: -(1 + Math.random()*3),
+      life: 1.0,
+      decay: 0.04,
+      size: 2 + Math.random()*3,
+      hue: 50 + Math.random()*20,
+      isEmber: true
+    });
+  }
+}
+
+// ============================================================
+// RENDER EFFECTS
+// ============================================================
+
+function renderEffects() {
+  // Semi-transparent clear for trails
+  eCtx.fillStyle = 'rgba(4, 8, 16, 0.18)';
+  eCtx.fillRect(0, 0, effectCanvas.width, effectCanvas.height);
+
+  // --- Splash particles ---
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= p.decay;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+
+    if (p.type === 'splash') {
+      p.x += p.vx; p.y += p.vy;
+      p.vy += 0.2; // gravity
+      eCtx.save();
+      eCtx.globalAlpha = p.life;
+      eCtx.beginPath();
+      eCtx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      eCtx.fillStyle = p.color;
+      eCtx.shadowBlur = 12;
+      eCtx.shadowColor = p.color;
+      eCtx.fill();
+      eCtx.restore();
+    } else if (p.type === 'ripple') {
+      p.radius += (p.maxRadius - p.radius) * 0.1;
+      eCtx.save();
+      eCtx.globalAlpha = p.life * 0.6;
+      eCtx.beginPath();
+      eCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      eCtx.strokeStyle = `hsla(195, 100%, 70%, ${p.life})`;
+      eCtx.lineWidth = 2;
+      eCtx.shadowBlur = 15;
+      eCtx.shadowColor = '#00fff7';
+      eCtx.stroke();
+      eCtx.restore();
+    }
+  }
+
+  // --- Rainbow trails ---
+  for (let i = rainbowTrails.length - 1; i >= 0; i--) {
+    const t = rainbowTrails[i];
+    t.life -= t.decay;
+    if (t.life <= 0) { rainbowTrails.splice(i, 1); continue; }
+    eCtx.save();
+    eCtx.globalAlpha = t.life * 0.8;
+    const gradient = eCtx.createRadialGradient(t.x, t.y, 0, t.x, t.y, t.size);
+    gradient.addColorStop(0, `hsla(${t.hue}, 100%, 70%, 1)`);
+    gradient.addColorStop(1, `hsla(${(t.hue+60)%360}, 100%, 50%, 0)`);
+    eCtx.beginPath();
+    eCtx.arc(t.x, t.y, t.size, 0, Math.PI * 2);
+    eCtx.fillStyle = gradient;
+    eCtx.fill();
+    eCtx.restore();
+  }
+
+  // --- Fire particles ---
+  for (let i = fireParticles.length - 1; i >= 0; i--) {
+    const p = fireParticles[i];
+    p.life -= p.decay;
+    if (p.life <= 0) { fireParticles.splice(i, 1); continue; }
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vx *= 0.98;
+
+    eCtx.save();
+    eCtx.globalAlpha = p.life * (p.isEmber ? 0.9 : 0.75);
+    if (p.isEmber) {
+      eCtx.beginPath();
+      eCtx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      eCtx.fillStyle = `hsl(${p.hue}, 100%, 80%)`;
+      eCtx.fill();
+    } else {
+      const g = eCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * p.life);
+      const lum = 40 + (1-p.life)*30;
+      g.addColorStop(0, `hsla(${p.hue}, 100%, ${lum+30}%, 1)`);
+      g.addColorStop(0.5, `hsla(${p.hue-10}, 100%, ${lum}%, 0.6)`);
+      g.addColorStop(1, `hsla(${p.hue-20}, 100%, 20%, 0)`);
+      eCtx.beginPath();
+      eCtx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      eCtx.fillStyle = g;
+      eCtx.fill();
+    }
+    eCtx.restore();
+  }
+}
+
+// ============================================================
+// DRAW POSE SKELETON
+// ============================================================
+
+function drawPose(keypoints) {
+  pCtx.clearRect(0, 0, poseCanvas.width, poseCanvas.height);
+  if (!keypoints || keypoints.length === 0) return;
+
+  const scaleX = poseCanvas.width / 640;
+  const scaleY = poseCanvas.height / 480;
+
+  const kpMap = {};
+  keypoints.forEach(kp => {
+    if (kp.score > 0.3) {
+      kpMap[kp.name] = { x: kp.x * scaleX, y: kp.y * scaleY, score: kp.score };
+    }
+  });
+
+  // Draw skeleton lines
+  const skeletonPairs = [
+    ['left_shoulder','right_shoulder'],
+    ['left_shoulder','left_elbow'],['left_elbow','left_wrist'],
+    ['right_shoulder','right_elbow'],['right_elbow','right_wrist'],
+    ['left_shoulder','left_hip'],['right_shoulder','right_hip'],
+    ['left_hip','right_hip'],
+    ['left_hip','left_knee'],['left_knee','left_ankle'],
+    ['right_hip','right_knee'],['right_knee','right_ankle'],
+    ['nose','left_eye'],['nose','right_eye'],
+    ['left_eye','left_ear'],['right_eye','right_ear']
+  ];
+
+  pCtx.lineWidth = 2;
+  pCtx.lineCap = 'round';
+
+  skeletonPairs.forEach(([a, b]) => {
+    if (kpMap[a] && kpMap[b]) {
+      const hue = (frameCount * 2) % 360;
+      pCtx.beginPath();
+      pCtx.moveTo(kpMap[a].x, kpMap[a].y);
+      pCtx.lineTo(kpMap[b].x, kpMap[b].y);
+      pCtx.strokeStyle = `hsla(${hue}, 100%, 70%, 0.6)`;
+      pCtx.shadowBlur = 8;
+      pCtx.shadowColor = `hsl(${hue}, 100%, 70%)`;
+      pCtx.stroke();
+    }
+  });
+
+  // Draw keypoints
+  Object.entries(kpMap).forEach(([name, kp]) => {
+    pCtx.beginPath();
+    pCtx.arc(kp.x, kp.y, 5, 0, Math.PI * 2);
+    pCtx.fillStyle = '#00fff7';
+    pCtx.shadowBlur = 15;
+    pCtx.shadowColor = '#00fff7';
+    pCtx.fill();
+  });
+}
+
+// ============================================================
+// APPLY EFFECTS TO KEYPOINTS
+// ============================================================
+
+function applyEffects(keypoints) {
+  if (!keypoints || keypoints.length === 0) return;
+
+  const scaleX = effectCanvas.width / 640;
+  const scaleY = effectCanvas.height / 480;
+
+  // Flip X because video is mirrored
+  const getPos = (kp) => ({
+    x: (effectCanvas.width - kp.x * scaleX),
+    y: kp.y * scaleY
+  });
+
+  const activePoints = keypoints.filter(kp => kp.score > 0.4);
+  const fx = currentFX;
+
+  activePoints.forEach((kp, idx) => {
+    const pos = getPos(kp);
+
+    if (fx === 'splash' || fx === 'all') {
+      // Splash on wrists, ankles, nose (moving points)
+      if (['left_wrist','right_wrist','left_ankle','right_ankle'].includes(kp.name)) {
+        if (Math.random() < 0.4) createSplash(pos.x, pos.y, 8);
+        if (Math.random() < 0.2) createRipple(pos.x, pos.y);
+      }
+      if (kp.name === 'nose' && Math.random() < 0.15) createRipple(pos.x, pos.y);
+    }
+
+    if (fx === 'rainbow' || fx === 'all') {
+      // Rainbow trail on all active keypoints
+      if (Math.random() < 0.6) addRainbowTrail(pos.x, pos.y);
+    }
+
+    if (fx === 'fire' || fx === 'all') {
+      // Fire from wrists, elbows, shoulders
+      if (['left_wrist','right_wrist','left_elbow','right_elbow'].includes(kp.name)) {
+        if (Math.random() < 0.5) createFire(pos.x, pos.y, 6);
+        if (Math.random() < 0.2) createEmber(pos.x, pos.y);
+      }
+      // Foot fire
+      if (['left_ankle','right_ankle'].includes(kp.name)) {
+        if (Math.random() < 0.4) createFire(pos.x, pos.y, 4);
+      }
+    }
+  });
+
+  // Detect movement — compare wrist positions to last frame
+  if (lastPose) {
+    const wristL = keypoints.find(k => k.name === 'left_wrist');
+    const wristR = keypoints.find(k => k.name === 'right_wrist');
+    const lastWL = lastPose.find(k => k.name === 'left_wrist');
+    const lastWR = lastPose.find(k => k.name === 'right_wrist');
+
+    const moved = (a, b) => a && b && a.score > 0.4 && b.score > 0.4 &&
+      Math.hypot(a.x - b.x, a.y - b.y) > 10;
+
+    if (moved(wristL, lastWL) && (fx === 'splash' || fx === 'all')) {
+      const pos = getPos(wristL);
+      createSplash(pos.x, pos.y, 15);
+      createRipple(pos.x, pos.y);
+    }
+    if (moved(wristR, lastWR) && (fx === 'splash' || fx === 'all')) {
+      const pos = getPos(wristR);
+      createSplash(pos.x, pos.y, 15);
+      createRipple(pos.x, pos.y);
+    }
+  }
+
+  lastPose = keypoints;
+}
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+
+let lastDetect = 0;
+const DETECT_INTERVAL = 80; // ms between pose detections
+
+async function loop(timestamp) {
+  frameCount++;
+
+  // FPS
+  if (timestamp - lastFPSTime > 1000) {
+    fps = Math.round(frameCount * 1000 / (timestamp - lastFPSTime));
+    frameCount = 0;
+    lastFPSTime = timestamp;
+    document.getElementById('fpsVal').textContent = fps;
+  }
+
+  // Pose detection (throttled)
+  if (detector && video.readyState === 4 && timestamp - lastDetect > DETECT_INTERVAL) {
+    lastDetect = timestamp;
+    try {
+      const poses = await detector.estimatePoses(video);
+      if (poses.length > 0) {
+        const kps = poses[0].keypoints;
+        const avgConf = kps.reduce((s, k) => s + k.score, 0) / kps.length;
+        const visibleKps = kps.filter(k => k.score > 0.3).length;
+
+        document.getElementById('kpVal').textContent = visibleKps + '/17';
+        document.getElementById('confVal').textContent = (avgConf * 100).toFixed(0) + '%';
+
+        if (visibleKps > 3) {
+          poseDetected = true;
+          document.getElementById('gestureHint').style.opacity = '0';
+          drawPose(kps);
+          applyEffects(kps);
+        } else {
+          poseDetected = false;
+        }
+      } else {
+        poseDetected = false;
+        document.getElementById('gestureHint').style.opacity = '1';
+        document.getElementById('kpVal').textContent = '--';
+        document.getElementById('confVal').textContent = '--';
+        pCtx.clearRect(0, 0, poseCanvas.width, poseCanvas.height);
+      }
+    } catch(e) {}
+  }
+
+  renderEffects();
+  requestAnimationFrame(loop);
+}
+
+// ============================================================
+// START
+// ============================================================
+init();
+</script>
+</body>
+</html>
